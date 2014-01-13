@@ -61,7 +61,6 @@ var CGSGAccordion = CGSGNode.extend(
             this.lineWidth = width;
             this.lineHeight = sectionHeight;
 
-            this.interLine = 2;
             this.padding = 5;
             this.speed = 30;
 
@@ -80,6 +79,7 @@ var CGSGAccordion = CGSGNode.extend(
         buildAndAddSection: function (title, preview, core) {
             var section = this.buildSection(title, preview, core), that = this;
 
+            //Find the y position of the new section.
             var y = 0;
             if (this.sections.length > 0) {
                 cgsgIterate(this.sections, function (i, el) {
@@ -111,7 +111,9 @@ var CGSGAccordion = CGSGNode.extend(
         buildSection: function (title, preview, core) {
             var section = new CGSGSection(0, 0, this.lineWidth, this.lineHeight);
             //add the title to the section.
-            section.setTitle(title);
+            if (cgsgExist(title)){
+                section.setTitle(title);
+            }
 
             //add the preview of the section.
             if (cgsgExist(preview)) {
@@ -149,7 +151,7 @@ var CGSGAccordion = CGSGNode.extend(
          */
         selectSection: function (section) {
             if (!this.isAnimated) {
-                var i, open;
+                var open;
 
                 if (section.collapsible) {
                     open = section.isOpen === true ? false : true;
@@ -172,16 +174,15 @@ var CGSGAccordion = CGSGNode.extend(
                         };
                     }
 
-                    //animate the selection
+                    //Find the position
                     var y = 0;
-
                     cgsgIterate(this.sections, function (i, el) {
                         if (section.index > el.index) {
                             y += el.previewHeight + this.padding;
                         }
                     }.bind(this));
 
-
+                    //animate the selection
                     this.openSection(section);
                     y += section.core.getHeight() + section.lineHeight + this.padding * 2;
                     //translate other section
@@ -210,8 +211,12 @@ var CGSGAccordion = CGSGNode.extend(
          * @method
          */
         openSection: function (section) {
-            var timeline = CGSG.animationManager.animate(section, "dimension.height", this.speed, section.getHeight(), section.getHeight() + section.core.getHeight() + this.padding, 0);
 
+            //Update the dimension of the section's core and the mask
+            var timeline = CGSG.animationManager.animate(section, "dimension.height", this.speed, section.getHeight(), section.getHeight() + section.core.getHeight(), 0);
+            CGSG.animationManager.animate(section, "mask._maskRegion.dimension.height", this.speed, section.previewHeight, section.lineHeight + section.core.getHeight(), 0);
+
+            //switch between preview and the core
             if(cgsgExist(section.preview)) {
                 timeline.onAnimationEnd = function () {
                     this.isAnimated = false;
@@ -220,19 +225,17 @@ var CGSGAccordion = CGSGNode.extend(
                 }.bind(this);
             }
 
+            //Dispatch event ON_SECTION_OPENED
             if (cgsgExist(this[cgsgEventTypes.ON_SECTION_OPENED])) {
                 CGSG.animationManager.getTimeline(section, "dimension.height").onAnimationEnd = function () {
                     CGSG.eventManager.dispatch(this, cgsgEventTypes.ON_SECTION_OPENED, new CGSGEvent(section, null));
                     this.isAnimated = false;
                 }.bind(this);
             }
-
+            //Dispatch event ON_SECTION_OPEN
             if (cgsgExist(this[cgsgEventTypes.ON_SECTION_OPEN])) {
                 CGSG.eventManager.dispatch(this, cgsgEventTypes.ON_SECTION_OPEN, new CGSGEvent(section, null));
-
             }
-
-            CGSG.animationManager.animate(section, "mask._maskRegion.dimension.height", this.speed, section.previewHeight, section.lineHeight + section.core.getHeight() + this.padding, 0);
         },
 
         /**
@@ -251,8 +254,8 @@ var CGSGAccordion = CGSGNode.extend(
                 //hide the core of the selected this.sections[i]
                 if (section.isOpen && section.collapsible) {
 
-                    var timeline2 = CGSG.animationManager.animate(section.core, "globalAlpha", this.speed, 1, 0, 0);
-
+                    //Switch between core and the preview.
+                    CGSG.animationManager.animate(section.core, "globalAlpha", this.speed, 1, 0, 0);
                     if(cgsgExist(section.preview)) {
                         //fade in with the preview
                         section.preview.isVisible = true;
@@ -260,11 +263,13 @@ var CGSGAccordion = CGSGNode.extend(
                         CGSG.animationManager.animate(section.preview, "globalAlpha", this.speed, 0, 1, 0);
                     }
 
+                    //Update the dimension of the core and the mask.
                     CGSG.animationManager.animate(section, "mask._maskRegion.dimension.height", this.speed, section.mask._maskRegion.dimension.height, section.previewHeight, 0);
                     var timeline = CGSG.animationManager.animate(section, "dimension.height", this.speed, section.getHeight(), section.previewHeight, 0);
                     timeline.onAnimationEnd = this._animationEndHandlerClose.bind(this, section);
                     section.isOpen = false;
 
+                    //Dispatch event ON_SECTION_CLOSE
                     if (cgsgExist(this[cgsgEventTypes.ON_SECTION_CLOSE])) {
                         CGSG.eventManager.dispatch(this, cgsgEventTypes.ON_SECTION_CLOSE, new CGSGEvent(section, null));
                     }
@@ -322,6 +327,9 @@ var CGSGSection = CGSGNode.extend(
 
             this.title = {};
 
+            this.mask = new CGSGMaskClip(new CGSGRegion(0, 0, this.getWidth(), this.getHeight()));
+            this.mask.apply(this);
+
             this.lineHeight = this.getHeight();
             this.lineWidth = this.getWidth();
         },
@@ -336,7 +344,7 @@ var CGSGSection = CGSGNode.extend(
                 this.title.setText(t, true);
             } else {
                 var title = new CGSGNodeText(0, 0, t);
-                title.setSize(this._titleSize);
+                title.setSize(this._titleSize, true);
                 title.color = this._textColor;
                 title.setTypo('Arial', true);
                 title.isTraversable = true;
@@ -347,8 +355,7 @@ var CGSGSection = CGSGNode.extend(
                 this.title.translateTo(this.getHeight(), (this.getHeight() - this.title.getHeight()) / 2.5, true);
             }
 
-            this.mask = new CGSGMaskClip(new CGSGRegion(0, 0, this.getWidth(), this.getHeight()));
-            this.mask.apply(this);
+            this.mask._maskRegion.dimension.height = this.getHeight();
 
             this.previewHeight = this.getHeight();
         },
@@ -360,11 +367,10 @@ var CGSGSection = CGSGNode.extend(
             } else {
                 this.preview = preview;
             }
-            this.preview.translateTo(0, this.getHeight() + this.padding, true);
+            this.preview.translateTo(0, this.getHeight() , true);
 
             this.previewHeight = this.preview.getAbsoluteBottom();
             this.resizeTo(this.getWidth(), this.previewHeight);
-
 
             this.mask._maskRegion.dimension.height = this.getHeight();
 
@@ -383,7 +389,7 @@ var CGSGSection = CGSGNode.extend(
             } else {
                 this.core = core;
             }
-            this.core.translateTo(0, this.lineHeight + this.padding, true);
+            this.core.translateTo(0, this.lineHeight, true);
 
             this.core.isVisible = false;
             this.core.isTraversable = false;
